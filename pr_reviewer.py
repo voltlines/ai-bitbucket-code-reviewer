@@ -101,7 +101,7 @@ def get_gemini_feedback(diff, creds):
             {
                 "parts": [
                     {
-                        "text": f"Please review the following code diff and provide your feedback. If the changes are good and can be approved, please respond with only the word 'approve'. Otherwise, provide your comments for changes in a JSON array format, where each object in the array has 'file_path', 'line_content', and 'comment' keys. The line_content should be the exact line from the diff that the comment is about. Example: [{{ \"file_path\": \"path/to/file.py\", \"line_content\": \"...\", \"comment\": \"This is a comment.\" }}]\n\n{diff}"
+                        "text": f"Please review the following code diff and provide your feedback (only critical). If the changes are good and can be approved, please respond with only the word 'approve'. Otherwise, provide your comments for changes in a JSON array format, where each object in the array has 'file_path', 'line_content', and 'comment' keys. The line_content should be the exact line from the diff that the comment is about. Example: [{{ \"file_path\": \"path/to/file.py\", \"line_content\": \"...\", \"comment\": \"This is a comment.\" }}]\n\n{diff}"
                     }
                 ]
             }
