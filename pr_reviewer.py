@@ -224,7 +224,8 @@ def main():
                         feedback = get_gemini_feedback(diff, gemini_creds)
 
                         if feedback.lower() == "approve":
-                            print("PR is approvable. Skipping.")
+                            pr.approve()
+                            print(f"PR approved.")
                         else:
                             try:
                                 if feedback.startswith("```json"):
