@@ -43,10 +43,31 @@ GEMINI_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/g
 BITBUCKET_API_BASE_URL = "https://api.bitbucket.org/2.0"
 # --- END OF CONFIGURATION --- #
 
+def get_config(config_name, prompt):
+    """Gets a configuration value from environment variables, a .configs file, or user input."""
+    # Try to get from environment variable
+    value = os.environ.get(config_name)
+    if value:
+        return value
+
+    # Try to get from .configs file
+    try:
+        with open(".configs", "r") as f:
+            for line in f:
+                if line.startswith(config_name):
+                    value = line.split("=")[1].strip()
+                    if value:
+                        return value
+    except FileNotFoundError:
+        pass
+
+    # Fallback to user input
+    return input(prompt)
+
 def get_credentials():
     """Gets Bitbucket credentials from the user."""
-    email = input("Enter your Atlassian account email: ")
-    api_token = input("Enter your Bitbucket API token: ")
+    email = get_config("BITBUCKET_EMAIL", "Enter your Atlassian account email: ")
+    api_token = get_config("BITBUCKET_API_TOKEN", "Enter your Bitbucket API token: ")
     return email, api_token
 
 def get_gemini_credentials():
@@ -152,8 +173,8 @@ def parse_diff(diff_text):
 def main():
     """Main function to review and approve pull requests."""
     email, api_token = get_credentials()
-    workspace = input("Enter your Bitbucket workspace: ")
-    repo_slug = input("Enter your Bitbucket repository slug: ")
+    workspace = get_config("BITBUCKET_WORKSPACE", "Enter your Bitbucket workspace: ")
+    repo_slug = get_config("BITBUCKET_REPO_SLUG", "Enter your Bitbucket repository slug: ")
 
     gemini_creds = get_gemini_credentials()
 

@@ -208,3 +208,4 @@ __marimo__/
 
 # Gemini Client Secret Json
 client_secret.json
+.configs
