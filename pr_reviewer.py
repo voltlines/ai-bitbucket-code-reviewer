@@ -43,11 +43,13 @@ GEMINI_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/g
 BITBUCKET_API_BASE_URL = "https://api.bitbucket.org/2.0"
 # --- END OF CONFIGURATION --- #
 
-def get_config(config_name, prompt):
+def get_config(config_name, prompt, is_list=False):
     """Gets a configuration value from environment variables, a .configs file, or user input."""
     # Try to get from environment variable
     value = os.environ.get(config_name)
     if value:
+        if is_list:
+            return [item.strip() for item in value.split(',')]
         return value
 
     # Try to get from .configs file
@@ -57,12 +59,17 @@ def get_config(config_name, prompt):
                 if line.startswith(config_name):
                     value = line.split("=")[1].strip()
                     if value:
+                        if is_list:
+                            return [item.strip() for item in value.split(',')]
                         return value
     except FileNotFoundError:
         pass
 
     # Fallback to user input
-    return input(prompt)
+    value = input(prompt)
+    if is_list:
+        return [item.strip() for item in value.split(',')]
+    return value
 
 def get_credentials():
     """Gets Bitbucket credentials from the user."""
@@ -174,7 +181,7 @@ def main():
     """Main function to review and approve pull requests."""
     email, api_token = get_credentials()
     workspace = get_config("BITBUCKET_WORKSPACE", "Enter your Bitbucket workspace: ")
-    repo_slug = get_config("BITBUCKET_REPO_SLUG", "Enter your Bitbucket repository slug: ")
+    repo_slugs = get_config("BITBUCKET_REPO_SLUG", "Enter your Bitbucket repository slug(s) (comma-separated): ", is_list=True)
 
     gemini_creds = get_gemini_credentials()
 
@@ -189,78 +196,83 @@ def main():
         print(f"Connected as {user_info['display_name']}.")
 
         bitbucket = Cloud(username=email, password=api_token)
-        repo = bitbucket.repositories.get(workspace, repo_slug)
-        pull_requests = list(repo.pullrequests.each())
-        print(f"Found {len(pull_requests)} open pull requests.")
-
-        print("\n--- Pull Request Review Summary ---")
-
-        for pr in pull_requests:
-            print(f"\nChecking PR: {pr.title}")
-            
-            interacted, reason = has_user_interacted(pr, user_uuid, email, api_token, workspace, repo_slug)
-            if interacted:
-                print(f"Skipping PR: {reason}")
-                continue
-
-            print(f"Reviewing PR: {pr.title}")
-            diff = pr.diff()
-            parsed_diff = parse_diff(diff)
-
+        for repo_slug in repo_slugs:
+            print(f"\n--- Processing repository: {repo_slug} ---")
             try:
-                feedback = get_gemini_feedback(diff, gemini_creds)
+                repo = bitbucket.repositories.get(workspace, repo_slug)
+                pull_requests = list(repo.pullrequests.each())
+                print(f"Found {len(pull_requests)} open pull requests.")
 
-                if feedback.lower() == "approve":
-                    print("PR is approvable. Skipping.")
-                else:
+                print("\n--- Pull Request Review Summary ---")
+
+                for pr in pull_requests:
+                    print(f"\nChecking PR: {pr.title}")
+                    
+                    interacted, reason = has_user_interacted(pr, user_uuid, email, api_token, workspace, repo_slug)
+                    if interacted:
+                        print(f"Skipping PR: {reason}")
+                        continue
+
+                    print(f"Reviewing PR: {pr.title}")
+                    diff = pr.diff()
+                    parsed_diff = parse_diff(diff)
+
                     try:
-                        if feedback.startswith("```json"):
-                            feedback = feedback[7:-4]
+                        feedback = get_gemini_feedback(diff, gemini_creds)
 
-                        comments = json.loads(feedback)
-                        added_comments_counter = 0
-                        for comment in comments:
-                            file_path = comment["file_path"]
-                            line_content = comment["line_content"]
-                            comment_text = comment["comment"]
-                            comment_posted = False
-                            print(f"--- DEBUG: Gemini comment ---")
-                            print(f"File: {file_path}")
-                            print(f"Line content: {line_content}")
+                        if feedback.lower() == "approve":
+                            print("PR is approvable. Skipping.")
+                        else:
+                            try:
+                                if feedback.startswith("```json"):
+                                    feedback = feedback[7:-4]
 
-                            if file_path in parsed_diff:
-                                for hunk in parsed_diff[file_path]:
-                                    current_line_in_new_file = hunk["new_start_line"]
-                                    for line in hunk["lines"]:
-                                        if line.strip() == line_content.strip():
-                                            post_inline_comment(
-                                                pr,
-                                                file_path,
-                                                current_line_in_new_file,
-                                                comment_text,
-                                                email,
-                                                api_token,
-                                                workspace,
-                                                repo_slug,
-                                            )
-                                            comment_posted = True
-                                            added_comments_counter += 1
-                                            break
-                                        if line.startswith("+") or line.startswith(" "):
-                                            current_line_in_new_file += 1
-                                    if comment_posted:
-                                        break
-                            
-                            if not comment_posted:
-                                print(f"Warning: Could not find line with content '{line_content}' in file {file_path} to post a comment.")
+                                comments = json.loads(feedback)
+                                added_comments_counter = 0
+                                for comment in comments:
+                                    file_path = comment["file_path"]
+                                    line_content = comment["line_content"]
+                                    comment_text = comment["comment"]
+                                    comment_posted = False
+                                    print(f"--- DEBUG: Gemini comment ---")
+                                    print(f"File: {file_path}")
+                                    print(f"Line content: {line_content}")
 
-                        print(f"{added_comments_counter} comments were added.")
-                    except json.JSONDecodeError:
-                        print("Could not parse Gemini's feedback as JSON. Posting as a general comment.")
-                        post_general_comment(pr, feedback, email, api_token, workspace, repo_slug)
+                                    if file_path in parsed_diff:
+                                        for hunk in parsed_diff[file_path]:
+                                            current_line_in_new_file = hunk["new_start_line"]
+                                            for line in hunk["lines"]:
+                                                if line.strip() == line_content.strip():
+                                                    post_inline_comment(
+                                                        pr,
+                                                        file_path,
+                                                        current_line_in_new_file,
+                                                        comment_text,
+                                                        email,
+                                                        api_token,
+                                                        workspace,
+                                                        repo_slug,
+                                                    )
+                                                    comment_posted = True
+                                                    added_comments_counter += 1
+                                                    break
+                                                if line.startswith("+") or line.startswith(" "):
+                                                    current_line_in_new_file += 1
+                                            if comment_posted:
+                                                break
+                                    
+                                    if not comment_posted:
+                                        print(f"Warning: Could not find line with content '{line_content}' in file {file_path} to post a comment.")
 
+                                print(f"{added_comments_counter} comments were added.")
+                            except json.JSONDecodeError:
+                                print("Could not parse Gemini's feedback as JSON. Posting as a general comment.")
+                                post_general_comment(pr, feedback, email, api_token, workspace, repo_slug)
+
+                    except Exception as e:
+                        print(f"Could not get feedback for PR: {pr.title}. Error: {e}")
             except Exception as e:
-                print(f"Could not get feedback for PR: {pr.title}. Error: {e}")
+                print(f"Error processing repository {repo_slug}: {e}")
 
     except (ApiError, requests.exceptions.HTTPError) as e:
         print(f"Error connecting to Bitbucket: {e}")

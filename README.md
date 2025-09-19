@@ -32,3 +32,17 @@
   automatically.
 
 
+# Configuration
+
+The script can be configured using a `.configs` file in the root directory. This file should contain the following key-value pairs:
+
+```
+BITBUCKET_EMAIL=your_email@example.com
+BITBUCKET_API_TOKEN=your_api_token
+BITBUCKET_WORKSPACE=your_workspace
+BITBUCKET_REPO_SLUG=your_repo_slug_1,your_repo_slug_2
+```
+
+An example of this file can be found in `.configs_example`.
+
+
