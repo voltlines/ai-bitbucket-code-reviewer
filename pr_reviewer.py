@@ -48,16 +48,18 @@ def get_config(config_name, prompt, is_list=False):
     # Try to get from environment variable
     value = os.environ.get(config_name)
     if value:
-        if is_list:
-            return [item.strip() for item in value.split(',')]
-        return value
+        value = value.strip()
+        if value:
+            if is_list:
+                return [item.strip() for item in value.split(',')]
+            return value
 
     # Try to get from .configs file
     try:
         with open(".configs", "r") as f:
             for line in f:
-                if line.startswith(config_name):
-                    value = line.split("=")[1].strip()
+                if line.startswith(config_name + "="):
+                    value = line.removeprefix(config_name + "=").strip()
                     if value:
                         if is_list:
                             return [item.strip() for item in value.split(',')]
@@ -180,7 +182,7 @@ def parse_diff(diff_text):
 def main():
     """Main function to review and approve pull requests."""
     email, api_token = get_credentials()
-    workspace = get_config("BITBUCKET_WORKSPACE", "Enter your Bitbucket workspace: ")
+    workspace = get_config("BITBUCKET_WORKSPACE", "Enter your Bitbucket workspace:")
     repo_slugs = get_config("BITBUCKET_REPO_SLUG", "Enter your Bitbucket repository slug(s) (comma-separated): ", is_list=True)
 
     gemini_creds = get_gemini_credentials()
