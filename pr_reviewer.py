@@ -118,6 +118,21 @@ def post_general_comment(pr, comment, email, api_token, workspace, repo_slug):
     )
     response.raise_for_status()
 
+def has_user_interacted(pr, user_uuid, email, api_token, workspace, repo_slug):
+    """Checks if the user has already approved or commented on the PR."""
+    activity_url = f"{BITBUCKET_API_BASE_URL}/repositories/{workspace}/{repo_slug}/pullrequests/{pr.id}/activity"
+    response = requests.get(activity_url, auth=(email, api_token))
+    response.raise_for_status()
+    for activity in response.json().get("values", []):
+        # Check for approvals
+        if "approval" in activity and activity["approval"]["user"]["uuid"] == user_uuid:
+            return True, "Already approved."
+        # Check for comments
+        if "comment" in activity and activity["comment"]["user"]["uuid"] == user_uuid:
+            return True, "Already commented."
+
+    return False, None
+
 def main():
     """Main function to review and approve pull requests."""
     email, api_token = get_credentials()
@@ -128,19 +143,32 @@ def main():
 
     try:
         print("Connecting to Bitbucket...")
+        
+        # Get user info directly via API call
+        user_info_url = f"{BITBUCKET_API_BASE_URL}/user"
+        response = requests.get(user_info_url, auth=(email, api_token))
+        response.raise_for_status()
+        user_info = response.json()
+        user_uuid = user_info["uuid"]
+        print(f"Connected as {user_info['display_name']}.")
+
+        # We still need the bitbucket object to get the pull requests
         bitbucket = Cloud(username=email, password=api_token)
         repo = bitbucket.repositories.get(workspace, repo_slug)
         pull_requests = list(repo.pullrequests.each())
-        print("Successfully connected to Bitbucket.")
-
-        if not pull_requests:
-            print("No open pull requests found.")
-            return
+        print(f"Found {len(pull_requests)} open pull requests.")
 
         print("\n--- Pull Request Review Summary ---")
 
         for pr in pull_requests:
-            print(f"\nReviewing PR: {pr.title}")
+            print(f"\nChecking PR: {pr.title}")
+            
+            interacted, reason = has_user_interacted(pr, user_uuid, email, api_token, workspace, repo_slug)
+            if interacted:
+                print(f"Skipping PR: {reason}")
+                continue
+
+            print(f"Reviewing PR: {pr.title}")
             diff = pr.diff()
 
             try:
@@ -156,7 +184,7 @@ def main():
                         # The Gemini API might return the JSON in a code block, so we need to extract it.
                         if feedback.startswith("```json"):
                             feedback = feedback[7:-4]
-                        
+
                         comments = json.loads(feedback)
                         for comment in comments:
                             print(
