@@ -236,9 +236,6 @@ def main():
                                     line_content = comment["line_content"]
                                     comment_text = comment["comment"]
                                     comment_posted = False
-                                    print(f"--- DEBUG: Gemini comment ---")
-                                    print(f"File: {file_path}")
-                                    print(f"Line content: {line_content}")
 
                                     if file_path in parsed_diff:
                                         for hunk in parsed_diff[file_path]:
@@ -265,6 +262,7 @@ def main():
                                     
                                     if not comment_posted:
                                         print(f"Warning: Could not find line with content '{line_content}' in file {file_path} to post a comment.")
+                                        print(f"Gemini review comment: '{comment_text}'")
 
                                 print(f"{added_comments_counter} comments were added.")
                             except json.JSONDecodeError:
