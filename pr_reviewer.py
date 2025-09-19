@@ -209,6 +209,7 @@ def main():
 
                 for pr in pull_requests:
                     print(f"\nChecking PR: {pr.title}")
+                    print(f"URL: https://bitbucket.org/{workspace}/{repo_slug}/pull-requests/{pr.id}/")
                     
                     interacted, reason = has_user_interacted(pr, user_uuid, email, api_token, workspace, repo_slug)
                     if interacted:
@@ -241,7 +242,9 @@ def main():
                                         for hunk in parsed_diff[file_path]:
                                             current_line_in_new_file = hunk["new_start_line"]
                                             for line in hunk["lines"]:
-                                                if line.strip() == line_content.strip():
+                                                hunk_line_content = line.strip()
+                                                hunk_line_content_without_plus = line.removeprefix("+").strip()
+                                                if hunk_line_content == line_content.strip() or hunk_line_content_without_plus == line_content.strip():
                                                     post_inline_comment(
                                                         pr,
                                                         file_path,
