@@ -40,6 +40,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 CLIENT_SECRET_FILE = "client_secret.json"
 SCOPES = ["https://www.googleapis.com/auth/generative-language.retriever"]
 GEMINI_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
+BITBUCKET_API_BASE_URL = "https://api.bitbucket.org/2.0"
 # --- END OF CONFIGURATION --- #
 
 def get_credentials():
@@ -60,7 +61,7 @@ def get_gemini_credentials():
     return creds
 
 def get_gemini_feedback(diff, creds):
-    """Gets feedback from the Gemini API for the given diff."""
+    """Gets structured feedback from the Gemini API for the given diff."""
     headers = {
         "Authorization": f"Bearer {creds.token}",
         "Content-Type": "application/json",
@@ -70,7 +71,7 @@ def get_gemini_feedback(diff, creds):
             {
                 "parts": [
                     {
-                        "text": f"Please review the following code diff and provide your feedback. If the changes are good and can be approved, please respond with only the word 'approve'. Otherwise, provide your comments for changes.:\n\n{diff}"
+                        "text": f"Please review the following code diff and provide your feedback. If the changes are good and can be approved, please respond with only the word 'approve'. Otherwise, provide your comments for changes in a JSON array format, where each object in the array has 'file_path', 'line_number', and 'comment' keys. Example: [{{ \"file_path\": \"path/to/file.py\", \"line_number\": 10, \"comment\": \"This is a comment.\" }}]\n\n{diff}"
                     }
                 ]
             }
@@ -83,18 +84,39 @@ def get_gemini_feedback(diff, creds):
     for i in range(retries):
         try:
             response = requests.post(GEMINI_API_ENDPOINT, headers=headers, json=data)
-            response.raise_for_status()  # Raise an exception for bad status codes
+            response.raise_for_status()
             return response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 429 and i < retries - 1:
                 print(f"Rate limit exceeded. Retrying in {delay} seconds...")
                 time.sleep(delay)
-                delay *= 2  # Exponential backoff
+                delay *= 2
             else:
                 print(f"Error calling Gemini API: {e}")
-                if e.response.status_code in [401, 403]:
-                    print("This might be due to an authentication issue with the Gemini API.")
                 raise
+
+def post_inline_comment(pr, file_path, line_number, comment, email, api_token, workspace, repo_slug):
+    """Posts an inline comment to a pull request."""
+    url = f"{BITBUCKET_API_BASE_URL}/repositories/{workspace}/{repo_slug}/pullrequests/{pr.id}/comments"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "content": {"raw": comment},
+        "inline": {"path": file_path, "to": line_number},
+    }
+    response = requests.post(
+        url, headers=headers, data=json.dumps(payload), auth=(email, api_token)
+    )
+    response.raise_for_status()
+
+def post_general_comment(pr, comment, email, api_token, workspace, repo_slug):
+    """Posts a general comment to a pull request."""
+    url = f"{BITBUCKET_API_BASE_URL}/repositories/{workspace}/{repo_slug}/pullrequests/{pr.id}/comments"
+    headers = {"Content-Type": "application/json"}
+    payload = {"content": {"raw": comment}}
+    response = requests.post(
+        url, headers=headers, data=json.dumps(payload), auth=(email, api_token)
+    )
+    response.raise_for_status()
 
 def main():
     """Main function to review and approve pull requests."""
@@ -115,26 +137,48 @@ def main():
             print("No open pull requests found.")
             return
 
-        print("Open Pull Requests:")
-        for i, pr in enumerate(pull_requests):
-            print(f"{i + 1}: {pr.title}")
+        print("\n--- Pull Request Review Summary ---")
 
-        choice = int(input("Select a pull request to review (enter the number): "))
-        selected_pr = pull_requests[choice - 1]
+        for pr in pull_requests:
+            print(f"\nReviewing PR: {pr.title}")
+            diff = pr.diff()
 
-        diff = selected_pr.diff()
-        print("\nGetting feedback from Gemini...")
+            try:
+                feedback = get_gemini_feedback(diff, gemini_creds)
 
-        feedback = get_gemini_feedback(diff, gemini_creds)
+                if feedback.lower() == "approve":
+                    print("PR is approvable. Skipping.")
+                else:
+                    print("--- DEBUG: Raw feedback from Gemini ---")
+                    print(feedback)
+                    print("----------------------------------------")
+                    try:
+                        # The Gemini API might return the JSON in a code block, so we need to extract it.
+                        if feedback.startswith("```json"):
+                            feedback = feedback[7:-4]
+                        
+                        comments = json.loads(feedback)
+                        for comment in comments:
+                            print(
+                                f"Adding comment to {comment['file_path']}:{comment['line_number']}: {comment['comment']}"
+                            )
+                            post_inline_comment(
+                                pr,
+                                comment["file_path"],
+                                comment["line_number"],
+                                comment["comment"],
+                                email,
+                                api_token,
+                                workspace,
+                                repo_slug,
+                            )
+                        print("All comments added.")
+                    except json.JSONDecodeError:
+                        print("Could not parse Gemini's feedback as JSON. Posting as a general comment.")
+                        post_general_comment(pr, feedback, email, api_token, workspace, repo_slug)
 
-        print(f"Gemini's feedback: {feedback}")
-
-        if feedback.lower() == "approve":
-            selected_pr.approve()
-            print("\nPull request approved!")
-        else:
-            selected_pr.comments.create(content=feedback)
-            print("\nComment added to the pull request.")
+            except Exception as e:
+                print(f"Could not get feedback for PR: {pr.title}. Error: {e}")
 
     except (ApiError, requests.exceptions.HTTPError) as e:
         print(f"Error connecting to Bitbucket: {e}")
