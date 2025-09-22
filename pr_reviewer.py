@@ -180,6 +180,28 @@ def has_user_interacted(pr, user_uuid, email, api_token, workspace, repo_slug):
 
     return False, None
 
+def already_commented_on_line(pr, file_path, line_number, email, api_token, workspace, repo_slug):
+    """Returns True if an identical inline comment already exists on the given file/line."""
+    url = f"{BITBUCKET_API_BASE_URL}/repositories/{workspace}/{repo_slug}/pullrequests/{pr.id}/comments"
+    next_url = url
+
+    while next_url:
+        response = requests.get(next_url, auth=(email, api_token))
+        response.raise_for_status()
+        data = response.json()
+
+        for c in data.get("values", []):
+            inline = c.get("inline") or {}
+            path = inline.get("path")
+            to_line = inline.get("to")
+
+            if path == file_path and to_line == line_number:
+                return True
+
+        next_url = data.get("next")
+
+    return False
+
 def parse_diff(diff_text):
     """Parses the diff text and returns a map of file paths to their hunks."""
     files = {}
@@ -236,6 +258,11 @@ def review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_cred
                             # Strip leading '+' or '-' to match content
                             stripped_line = line[1:].strip() if line.startswith(('+', '-')) else line.strip()
                             if stripped_line == line_content:
+                                if already_commented_on_line(pr, file_path, current_line_in_new_file, email, api_token, workspace, repo_slug):
+                                    print(f"Skipping duplicate comment on {file_path}:{current_line_in_new_file}")
+                                    comment_posted = True
+                                    break
+
                                 post_inline_comment(
                                     pr,
                                     file_path,
