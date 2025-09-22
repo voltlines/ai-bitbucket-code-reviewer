@@ -268,10 +268,7 @@ def review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_cred
 def get_mode():
     """Gets the desired mode of operation from the user."""
     while True:
-        print("Please select a mode:")
-        print("1. Loop over opened PRs")
-        print("2. Review a specific PR")
-        mode = input("Enter the mode number: ")
+        mode = get_config("MODE", "Please select a mode:\n1. Loop over opened PRs\n2. Review a specific PR\nEnter 1 or 2: ")
         if mode in ["1", "2"]:
             return int(mode)
         else:
@@ -298,7 +295,7 @@ def main():
 
         gemini_creds = get_gemini_credentials()
         if mode == 1:
-            repo_slugs = get_config("BITBUCKET_REPO_SLUG", "Enter your Bitbucket repository slug(s) (comma-separated): ", is_list=True)
+            repo_slugs = get_config("MODE_1_REPO_SLUG_LIST", "Enter your Bitbucket repository slug(s) (comma-separated): ", is_list=True)
             for repo_slug in repo_slugs:
                 print(f"\n--- Processing repository: {repo_slug} ---")
                 try:
@@ -320,7 +317,7 @@ def main():
         
         elif mode == 2:
             repo_slug = get_config("MODE_2_REPO_SLUG", "Enter the repository slug for the PR: ")
-            pr_id = get_config("PR_ID", "Enter the PR ID: ")
+            pr_id = get_config("MODE_2_PR_ID", "Enter the PR ID: ")
             try:
                 repo = bitbucket.repositories.get(workspace, repo_slug)
                 pr = repo.pullrequests.get(pr_id)

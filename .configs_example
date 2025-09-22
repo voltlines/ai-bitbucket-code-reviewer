@@ -2,6 +2,12 @@
 BITBUCKET_EMAIL=your_email@example.com
 BITBUCKET_API_TOKEN=your_api_token
 BITBUCKET_WORKSPACE=your_workspace
-BITBUCKET_REPO_SLUG=your_repo_slug_1,your_repo_slug_2
+# MODE:
+#   1. Loop over opened PRs
+#   2. Review a specific PR
+MODE=1
+# MODE_1:
+MODE_1_REPO_SLUG_LIST=your_repo_slug_1,your_repo_slug_2
+# MODE_2
 MODE_2_REPO_SLUG=your_repo_slug
-PR_ID=your_pr_id
+MODE_2_PR_ID=your_pr_id

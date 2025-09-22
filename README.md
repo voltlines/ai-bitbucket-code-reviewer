@@ -49,9 +49,10 @@ The script can be configured using a `.configs` file in the root directory. This
 BITBUCKET_EMAIL=your_email@example.com
 BITBUCKET_API_TOKEN=your_api_token
 BITBUCKET_WORKSPACE=your_workspace
-BITBUCKET_REPO_SLUG=your_repo_slug_1,your_repo_slug_2
+MODE=1
+MODE_1_REPO_SLUG_LIST=your_repo_slug_1,your_repo_slug_2
 MODE_2_REPO_SLUG=your_repo_slug
-PR_ID=your_pr_id
+MODE_2_PR_ID=your_pr_id
 ```
 
 An example of this file can be found in `.configs_example`.
@@ -61,8 +62,10 @@ You can also configure the script using environment variables. The following env
 *   `BITBUCKET_EMAIL`
 *   `BITBUCKET_API_TOKEN`
 *   `BITBUCKET_WORKSPACE`
-*   `BITBUCKET_REPO_SLUG`
+*   `MODE`
+*   `MODE_1_REPO_SLUG_LIST`
 *   `MODE_2_REPO_SLUG`
-*   `PR_ID`
+*   `MODE_2_PR_ID`
 
 If a configuration value is not found in the environment variables or the `.configs` file, the script will prompt you for it.
+rompt you for it.
