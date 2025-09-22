@@ -3,6 +3,7 @@ utils.install_needed_libraries()
 
 import os
 import time
+from datetime import datetime
 import json
 import requests
 from atlassian.bitbucket import Cloud
@@ -268,8 +269,8 @@ def review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_cred
 def get_mode():
     """Gets the desired mode of operation from the user."""
     while True:
-        mode = get_config("MODE", "Please select a mode:\n1. Loop over opened PRs\n2. Review a specific PR\nEnter 1 or 2: ")
-        if mode in ["1", "2"]:
+        mode = get_config("MODE", "Please select a mode:\n1. Loop over opened PRs.\n2. Review a specific PR.\n3. Loop over all PRs in a specific time periods.\nEnter 1, 2, or 3: ")
+        if mode in ["1", "2", "3"]:
             return int(mode)
         else:
             print("Invalid mode selected. Please try again.")
@@ -307,6 +308,27 @@ def main():
                         continue
 
                     print(f"Found {len(pull_requests)} open pull requests.")
+
+                    print("\n--- Pull Request Review Summary ---")
+
+                    for pr in pull_requests:
+                        review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds, True)
+                except Exception as e:
+                    print(f"Error processing repository {repo_slug}: {e}")
+        elif mode == 3:
+            repo_slugs = get_config("MODE_3_REPO_SLUG_LIST", "Enter your Bitbucket repository slug(s) (comma-separated): ", is_list=True)
+            start_date = get_config("MODE_3_START_DATE", "Enter your start date (YYYY-MM-DD): ") + "T00:00:00-00:00"
+            end_date = get_config("MODE_3_END_DATE", "Enter your end date (YYYY-MM-DD): ") + "T23:59:59-00:00"
+            for repo_slug in repo_slugs:
+                print(f"\n--- Processing repository: {repo_slug} ---")
+                try:
+                    repo = bitbucket.repositories.get(workspace, repo_slug)
+                    pull_requests = list(repo.pullrequests.each(f"created_on >= {start_date} AND created_on <= {end_date}"))
+                    if not pull_requests:
+                        print("No pull requests found.")
+                        continue
+
+                    print(f"Found {len(pull_requests)} pull requests.")
 
                     print("\n--- Pull Request Review Summary ---")
 

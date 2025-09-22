@@ -5,9 +5,14 @@ BITBUCKET_WORKSPACE=your_workspace
 # MODE:
 #   1. Loop over opened PRs
 #   2. Review a specific PR
+#   3. Loop over all PRs in a specific time periods
 MODE=1
 # MODE_1:
 MODE_1_REPO_SLUG_LIST=your_repo_slug_1,your_repo_slug_2
 # MODE_2
 MODE_2_REPO_SLUG=your_repo_slug
 MODE_2_PR_ID=your_pr_id
+# MODE_3
+MODE_3_REPO_SLUG_LIST=your_repo_slug_1,your_repo_slug_2
+MODE_3_START_DATE=YYYY-MM-DD
+MODE_3_END_DATE=YYYY-MM-DD
