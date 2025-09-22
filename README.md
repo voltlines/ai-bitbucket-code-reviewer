@@ -2,6 +2,13 @@
 
 This script automates the process of reviewing pull requests in Bitbucket using the Gemini API. It can approve pull requests that look good, and it can also post comments with feedback on pull requests that need changes.
 
+## Modes of Operation
+
+The script has two modes of operation:
+
+1.  **Loop over opened PRs**: This mode will loop over all open pull requests in the specified repositories and review them.
+2.  **Review a specific PR**: This mode will review a single, specified pull request.
+
 ## Gemini Assist Authentication
 
 The method used here requires a one-time setup to authorize the script.
@@ -43,6 +50,8 @@ BITBUCKET_EMAIL=your_email@example.com
 BITBUCKET_API_TOKEN=your_api_token
 BITBUCKET_WORKSPACE=your_workspace
 BITBUCKET_REPO_SLUG=your_repo_slug_1,your_repo_slug_2
+MODE_2_REPO_SLUG=your_repo_slug
+PR_ID=your_pr_id
 ```
 
 An example of this file can be found in `.configs_example`.
@@ -53,5 +62,7 @@ You can also configure the script using environment variables. The following env
 *   `BITBUCKET_API_TOKEN`
 *   `BITBUCKET_WORKSPACE`
 *   `BITBUCKET_REPO_SLUG`
+*   `MODE_2_REPO_SLUG`
+*   `PR_ID`
 
 If a configuration value is not found in the environment variables or the `.configs` file, the script will prompt you for it.

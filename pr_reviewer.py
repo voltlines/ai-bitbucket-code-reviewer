@@ -1,37 +1,13 @@
+import utils
+utils.install_needed_libraries()
+
 import os
-import subprocess
-import sys
 import time
-
-def install_missing_libraries():
-    """Checks for required libraries and installs them if they are missing."""
-    try:
-        import requests
-    except ImportError:
-        print("requests is not installed. Installing...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"])
-    try:
-        from atlassian.bitbucket import Cloud
-        from atlassian.errors import ApiError
-    except ImportError:
-        print("atlassian-python-api is not installed. Installing...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "atlassian-python-api"])
-    try:
-        import google.auth
-        from google_auth_oauthlib.flow import InstalledAppFlow
-    except ImportError:
-        print("google-auth and google-auth-oauthlib are not installed. Installing...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "google-auth", "google-auth-oauthlib"])
-
-install_missing_libraries()
-
-import requests
 import json
+import requests
 from atlassian.bitbucket import Cloud
 from atlassian.errors import ApiError
-import google.auth
 from google_auth_oauthlib.flow import InstalledAppFlow
-
 
 # --- PLEASE CONFIGURE THESE VALUES --- #
 # 1. Go to https://console.cloud.google.com/apis/credentials
@@ -219,15 +195,16 @@ def parse_diff(diff_text):
             files[current_file][-1]["lines"].append(line)
     return files
 
-def review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds):
+def review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds, skip_if_user_interacted):
     """Reviews a single pull request."""
     print(f"\nChecking PR: {pr.title}")
     print(f"URL: https://bitbucket.org/{workspace}/{repo_slug}/pull-requests/{pr.id}/")
     
-    interacted, reason = has_user_interacted(pr, user_uuid, email, api_token, workspace, repo_slug)
-    if interacted:
-        print(f"Skipping PR: {reason}")
-        return
+    if skip_if_user_interacted:
+        interacted, reason = has_user_interacted(pr, user_uuid, email, api_token, workspace, repo_slug)
+        if interacted:
+            print(f"Skipping PR: {reason}")
+            return
 
     print(f"Reviewing PR: {pr.title}")
     diff = pr.diff()
@@ -288,13 +265,22 @@ def review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_cred
     except Exception as e:
         print(f"Could not get feedback for PR: {pr.title}. Error: {e}")
 
+def get_mode():
+    """Gets the desired mode of operation from the user."""
+    while True:
+        print("Please select a mode:")
+        print("1. Loop over opened PRs")
+        print("2. Review a specific PR")
+        mode = input("Enter the mode number: ")
+        if mode in ["1", "2"]:
+            return int(mode)
+        else:
+            print("Invalid mode selected. Please try again.")
+
 def main():
     """Main function to review and approve pull requests."""
     email, api_token = get_credentials()
     workspace = get_config("BITBUCKET_WORKSPACE", "Enter your Bitbucket workspace:")
-    repo_slugs = get_config("BITBUCKET_REPO_SLUG", "Enter your Bitbucket repository slug(s) (comma-separated): ", is_list=True)
-
-    gemini_creds = get_gemini_credentials()
 
     try:
         print("Connecting to Bitbucket...")
@@ -307,24 +293,41 @@ def main():
         print(f"Connected as {user_info['display_name']}.")
 
         bitbucket = Cloud(username=email, password=api_token)
-        for repo_slug in repo_slugs:
-            print(f"\n--- Processing repository: {repo_slug} ---")
+        
+        mode = get_mode()
+
+        gemini_creds = get_gemini_credentials()
+        if mode == 1:
+            repo_slugs = get_config("BITBUCKET_REPO_SLUG", "Enter your Bitbucket repository slug(s) (comma-separated): ", is_list=True)
+            for repo_slug in repo_slugs:
+                print(f"\n--- Processing repository: {repo_slug} ---")
+                try:
+                    repo = bitbucket.repositories.get(workspace, repo_slug)
+                    pull_requests = list(repo.pullrequests.each())
+                    
+                    if not pull_requests:
+                        print("No open pull requests found.")
+                        continue
+
+                    print(f"Found {len(pull_requests)} open pull requests.")
+
+                    print("\n--- Pull Request Review Summary ---")
+
+                    for pr in pull_requests:
+                        review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds, True)
+                except Exception as e:
+                    print(f"Error processing repository {repo_slug}: {e}")
+        
+        elif mode == 2:
+            repo_slug = get_config("MODE_2_REPO_SLUG", "Enter the repository slug for the PR: ")
+            pr_id = get_config("PR_ID", "Enter the PR ID: ")
             try:
                 repo = bitbucket.repositories.get(workspace, repo_slug)
-                pull_requests = list(repo.pullrequests.each())
-                
-                if not pull_requests:
-                    print("No open pull requests found.")
-                    continue
-
-                print(f"Found {len(pull_requests)} open pull requests.")
-
-                print("\n--- Pull Request Review Summary ---")
-
-                for pr in pull_requests:
-                    review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds)
+                pr = repo.pullrequests.get(pr_id)
+                review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds, False)
             except Exception as e:
-                print(f"Error processing repository {repo_slug}: {e}")
+                print(f"Error processing PR #{pr_id} in repository {repo_slug}: {e}")
+
 
     except (ApiError, requests.exceptions.HTTPError) as e:
         print(f"Error connecting to Bitbucket: {e}")
