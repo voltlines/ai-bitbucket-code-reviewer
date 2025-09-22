@@ -96,12 +96,13 @@ def get_gemini_feedback(diff, creds):
         "Authorization": f"Bearer {creds.token}",
         "Content-Type": "application/json",
     }
+    prompt = f"Please review the following code diff and provide your feedback (only critical). ignore submodule changes and don't comment on them. If the changes are good and can be approved, please respond with only the word 'approve'. Otherwise, provide your comments for changes in a JSON array format, where each object in the array has 'file_path', 'line_content', and 'comment' keys. The line_content should be the exact line from the diff that the comment is about. Example: [{{ \"file_path\": \"path/to/file.py\", \"line_content\": \"...\", \"comment\": \"This is a comment.\" }}]\n\n{diff}"
     data = {
         "contents": [
             {
                 "parts": [
                     {
-                        "text": f"Please review the following code diff and provide your feedback (only critical). If the changes are good and can be approved, please respond with only the word 'approve'. Otherwise, provide your comments for changes in a JSON array format, where each object in the array has 'file_path', 'line_content', and 'comment' keys. The line_content should be the exact line from the diff that the comment is about. Example: [{{ \"file_path\": \"path/to/file.py\", \"line_content\": \"...\", \"comment\": \"This is a comment.\" }}]\n\n{diff}"
+                        "text": prompt
                     }
                 ]
             }
@@ -121,9 +122,21 @@ def get_gemini_feedback(diff, creds):
                 print(f"Rate limit exceeded. Retrying in {delay} seconds...")
                 time.sleep(delay)
                 delay *= 2
+            elif e.response.status_code == 503 and i < retries - 1:
+                print(f"Gemini API returned 503. Retrying... ({retries - i - 1} retries left)")
+                time.sleep(5)
+            elif i == retries - 1:
+                print("Gemini API is unavailable after multiple retries.")
+                user_input = input("Would you like to get the complete Gemini prompt to get the feedback on your own? (yes/no): ")
+                if user_input.lower() == 'yes':
+                    print("\n--- Gemini Prompt ---\n")
+                    print(prompt)
+                    print("\n--- End of Gemini Prompt ---")
+                raise
             else:
                 print(f"Error calling Gemini API: {e}")
                 raise
+
 
 def post_inline_comment(pr, file_path, line_number, comment, email, api_token, workspace, repo_slug):
     """Posts an inline comment to a pull request."""
