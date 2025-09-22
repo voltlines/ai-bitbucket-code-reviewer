@@ -55,6 +55,9 @@ MODE=1
 MODE_1_REPO_SLUG_LIST=your_repo_slug_1,your_repo_slug_2
 MODE_2_REPO_SLUG=your_repo_slug
 MODE_2_PR_ID=your_pr_id
+MODE_3_REPO_SLUG_LIST=your_repo_slug_1,your_repo_slug_2
+MODE_3_START_DATE=YYYY-MM-DD
+MODE_3_END_DATE=YYYY-MM-DD
 ```
 
 An example of this file can be found in `.configs_example`.
@@ -68,6 +71,9 @@ You can also configure the script using environment variables. The following env
 * `MODE_1_REPO_SLUG_LIST`
 * `MODE_2_REPO_SLUG`
 * `MODE_2_PR_ID`
+* `MODE_3_REPO_SLUG_LIST`
+* `MODE_3_START_DATE`
+* `MODE_3_END_DATE`
 
 If a configuration value is not found in the environment variables or the `.configs` file, the script will prompt you for it.
 rompt you for it.
