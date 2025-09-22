@@ -137,6 +137,17 @@ def get_gemini_feedback(diff, creds):
                 print(f"Error calling Gemini API: {e}")
                 raise
 
+def parse_gemini_feedback(feedback):
+    """Parses the feedback from the Gemini API."""
+    if feedback.lower() == "approve":
+        return "approve", None
+    
+    try:
+        if feedback.startswith("```json"):
+            feedback = feedback[7:-4]
+        return "comment", json.loads(feedback)
+    except json.JSONDecodeError:
+        return "comment", feedback
 
 def post_inline_comment(pr, file_path, line_number, comment, email, api_token, workspace, repo_slug):
     """Posts an inline comment to a pull request."""
@@ -192,6 +203,75 @@ def parse_diff(diff_text):
             files[current_file][-1]["lines"].append(line)
     return files
 
+def review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds):
+    """Reviews a single pull request."""
+    print(f"\nChecking PR: {pr.title}")
+    print(f"URL: https://bitbucket.org/{workspace}/{repo_slug}/pull-requests/{pr.id}/")
+    
+    interacted, reason = has_user_interacted(pr, user_uuid, email, api_token, workspace, repo_slug)
+    if interacted:
+        print(f"Skipping PR: {reason}")
+        return
+
+    print(f"Reviewing PR: {pr.title}")
+    diff = pr.diff()
+    parsed_diff = parse_diff(diff)
+
+    try:
+        feedback = get_gemini_feedback(diff, gemini_creds)
+        action, comments = parse_gemini_feedback(feedback)
+
+        if action == "approve":
+            pr.approve()
+            print(f"PR approved.")
+        elif isinstance(comments, list):
+            added_comments_counter = 0
+            for comment in comments:
+                file_path = comment["file_path"]
+                line_content = comment["line_content"].strip()
+                comment_text = comment["comment"]
+                comment_posted = False
+
+                if not line_content:
+                    continue
+
+                if file_path in parsed_diff:
+                    for hunk in parsed_diff[file_path]:
+                        current_line_in_new_file = hunk["new_start_line"]
+                        for line in hunk["lines"]:
+                            # Strip leading '+' or '-' to match content
+                            stripped_line = line[1:].strip() if line.startswith(('+', '-')) else line.strip()
+                            if stripped_line == line_content:
+                                post_inline_comment(
+                                    pr,
+                                    file_path,
+                                    current_line_in_new_file,
+                                    comment_text,
+                                    email,
+                                    api_token,
+                                    workspace,
+                                    repo_slug,
+                                )
+                                comment_posted = True
+                                added_comments_counter += 1
+                                break
+                            if line.startswith("+") or line.startswith(" "):
+                                current_line_in_new_file += 1
+                        if comment_posted:
+                            break
+                
+                if not comment_posted:
+                    print(f"Warning: Could not find line with content '{line_content}' in file {file_path} to post a comment.")
+                    print(f"Gemini review comment: '{comment_text}'")
+
+            print(f"{added_comments_counter} comments were added.")
+        else:
+            print("Could not parse Gemini's feedback as JSON. Posting as a general comment.")
+            post_general_comment(pr, feedback, email, api_token, workspace, repo_slug)
+
+    except Exception as e:
+        print(f"Could not get feedback for PR: {pr.title}. Error: {e}")
+
 def main():
     """Main function to review and approve pull requests."""
     email, api_token = get_credentials()
@@ -216,78 +296,17 @@ def main():
             try:
                 repo = bitbucket.repositories.get(workspace, repo_slug)
                 pull_requests = list(repo.pullrequests.each())
+                
+                if not pull_requests:
+                    print("No open pull requests found.")
+                    continue
+
                 print(f"Found {len(pull_requests)} open pull requests.")
 
                 print("\n--- Pull Request Review Summary ---")
 
                 for pr in pull_requests:
-                    print(f"\nChecking PR: {pr.title}")
-                    print(f"URL: https://bitbucket.org/{workspace}/{repo_slug}/pull-requests/{pr.id}/")
-                    
-                    interacted, reason = has_user_interacted(pr, user_uuid, email, api_token, workspace, repo_slug)
-                    if interacted:
-                        print(f"Skipping PR: {reason}")
-                        continue
-
-                    print(f"Reviewing PR: {pr.title}")
-                    diff = pr.diff()
-                    parsed_diff = parse_diff(diff)
-
-                    try:
-                        feedback = get_gemini_feedback(diff, gemini_creds)
-
-                        if feedback.lower() == "approve":
-                            pr.approve()
-                            print(f"PR approved.")
-                        else:
-                            try:
-                                if feedback.startswith("```json"):
-                                    feedback = feedback[7:-4]
-
-                                comments = json.loads(feedback)
-                                added_comments_counter = 0
-                                for comment in comments:
-                                    file_path = comment["file_path"]
-                                    line_content = comment["line_content"]
-                                    comment_text = comment["comment"]
-                                    comment_posted = False
-
-                                    if file_path in parsed_diff:
-                                        for hunk in parsed_diff[file_path]:
-                                            current_line_in_new_file = hunk["new_start_line"]
-                                            for line in hunk["lines"]:
-                                                hunk_line_content = line.strip()
-                                                hunk_line_content_without_plus = line.removeprefix("+").strip()
-                                                if hunk_line_content == line_content.strip() or hunk_line_content_without_plus == line_content.strip():
-                                                    post_inline_comment(
-                                                        pr,
-                                                        file_path,
-                                                        current_line_in_new_file,
-                                                        comment_text,
-                                                        email,
-                                                        api_token,
-                                                        workspace,
-                                                        repo_slug,
-                                                    )
-                                                    comment_posted = True
-                                                    added_comments_counter += 1
-                                                    break
-                                                if line.startswith("+") or line.startswith(" "):
-                                                    current_line_in_new_file += 1
-                                            if comment_posted:
-                                                break
-                                    
-                                    if not comment_posted:
-                                        print(f"Warning: Could not find line with content '{line_content}' in file {file_path} to post a comment.")
-                                        print(f"Gemini review comment: '{comment_text}'")
-
-                                print(f"{added_comments_counter} comments were added.")
-                            except json.JSONDecodeError:
-                                print("Could not parse Gemini's feedback as JSON. Posting as a general comment.")
-                                post_general_comment(pr, feedback, email, api_token, workspace, repo_slug)
-
-                    except Exception as e:
-                        print(f"Could not get feedback for PR: {pr.title}. Error: {e}")
+                    review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds)
             except Exception as e:
                 print(f"Error processing repository {repo_slug}: {e}")
 
