@@ -74,7 +74,7 @@ def get_gemini_feedback(diff, creds):
     }
     prompt = f"""Please review the following code diff and provide your feedback (only critical). ignore submodule changes and don't comment on them. If the changes are good and can be approved, please respond with only the word 'approve'. 
     Otherwise, provide your comments for changes in a JSON array format, where each object in the array has 'file_path', 'line_content', and 'comment' keys. 
-    The line_content should be the exact line from the diff that the comment is about.
+    The line_content should be the exact line from the diff that the comment is about and it should be one line without new line characters.
     Example:
     ```json
     [
