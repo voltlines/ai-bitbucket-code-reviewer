@@ -96,7 +96,23 @@ def get_gemini_feedback(diff, creds):
         "Authorization": f"Bearer {creds.token}",
         "Content-Type": "application/json",
     }
-    prompt = f"Please review the following code diff and provide your feedback (only critical). ignore submodule changes and don't comment on them. If the changes are good and can be approved, please respond with only the word 'approve'. Otherwise, provide your comments for changes in a JSON array format, where each object in the array has 'file_path', 'line_content', and 'comment' keys. The line_content should be the exact line from the diff that the comment is about. Example: [{{ \"file_path\": \"path/to/file.py\", \"line_content\": \"...\", \"comment\": \"This is a comment.\" }}]\n\n{diff}"
+    prompt = f"""Please review the following code diff and provide your feedback (only critical). ignore submodule changes and don't comment on them. If the changes are good and can be approved, please respond with only the word 'approve'. 
+    Otherwise, provide your comments for changes in a JSON array format, where each object in the array has 'file_path', 'line_content', and 'comment' keys. 
+    The line_content should be the exact line from the diff that the comment is about.
+    Example:
+    ```json
+    [
+        {{
+            "file_path": "path/to/file.py",
+            "line_content": "...",
+            "comment": "This is a comment."
+        }}
+    ]
+    ```
+    
+    Here is the diff:
+    {diff}
+    """
     data = {
         "contents": [
             {
