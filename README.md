@@ -55,6 +55,7 @@ The script can be configured using a `.configs` file in the root directory. This
 BITBUCKET_EMAIL=your_email@example.com
 BITBUCKET_API_TOKEN=your_api_token
 BITBUCKET_WORKSPACE=your_workspace
+PRINT_PROMPT_WHEN_AI_AGENT_FAIL=yes|no
 AI_AGENT=AI_agent__gemini_or_codex
 MODE=1
 MODE_1_REPO_SLUG_LIST=your_repo_slug_1,your_repo_slug_2
@@ -72,6 +73,7 @@ You can also configure the script using environment variables. The following env
 * `BITBUCKET_EMAIL`
 * `BITBUCKET_API_TOKEN`
 * `BITBUCKET_WORKSPACE`
+* `PRINT_PROMPT_WHEN_AI_AGENT_FAIL`
 * `AI_AGENT`
 * `MODE`
 * `MODE_1_REPO_SLUG_LIST`

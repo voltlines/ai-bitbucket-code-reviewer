@@ -2,6 +2,7 @@
 BITBUCKET_EMAIL=your_email@example.com
 BITBUCKET_API_TOKEN=your_api_token
 BITBUCKET_WORKSPACE=your_workspace
+PRINT_PROMPT_WHEN_AI_AGENT_FAIL=yes|no
 AI_AGENT=AI_agent_Gemini_or_Codex
 OPENAI_API_KEY=sk-proj-----xx
 # MODE:

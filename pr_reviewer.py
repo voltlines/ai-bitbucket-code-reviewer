@@ -123,8 +123,8 @@ def get_gemini_feedback(diff, creds):
                 time.sleep(5)
             elif i == retries - 1:
                 print("Gemini API is unavailable after multiple retries.")
-                user_input = input("Would you like to get the complete Gemini prompt to get the feedback on your own? (yes/no): ")
-                if user_input.lower() == 'yes':
+                print_prompt_when_ai_agent_fail = get_config("PRINT_PROMPT_WHEN_AI_AGENT_FAIL", "Would you like to get the complete Gemini/Codex prompt to get the feedback on your own? (yes/no): ")
+                if print_prompt_when_ai_agent_fail.lower() == 'yes':
                     print("\n--- Gemini Prompt ---\n")
                     print(prompt)
                     print("\n--- End of Gemini Prompt ---")
