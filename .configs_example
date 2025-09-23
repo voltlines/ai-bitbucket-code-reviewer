@@ -2,6 +2,8 @@
 BITBUCKET_EMAIL=your_email@example.com
 BITBUCKET_API_TOKEN=your_api_token
 BITBUCKET_WORKSPACE=your_workspace
+AI_AGENT=AI_agent_Gemini_or_Codex
+OPENAI_API_KEY=sk-proj-----xx
 # MODE:
 #   1. Loop over opened PRs
 #   2. Review a specific PR

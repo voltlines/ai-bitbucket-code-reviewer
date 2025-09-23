@@ -18,6 +18,9 @@ CLIENT_SECRET_FILE = "client_secret.json"
 SCOPES = ["https://www.googleapis.com/auth/generative-language.retriever"]
 GEMINI_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
 BITBUCKET_API_BASE_URL = "https://api.bitbucket.org/2.0"
+# Codex (OpenAI) configuration
+OPENAI_API_ENDPOINT = "https://api.openai.com/v1/chat/completions"
+OPENAI_DEFAULT_MODEL = "gpt-5-nano" #"gpt-4o-mini"
 # --- END OF CONFIGURATION --- #
 
 def get_config(config_name, prompt, is_list=False):
@@ -130,8 +133,68 @@ def get_gemini_feedback(diff, creds):
                 print(f"Error calling Gemini API: {e}")
                 raise
 
-def parse_gemini_feedback(feedback):
-    """Parses the feedback from the Gemini API."""
+def get_codex_credentials():
+    """Gets OpenAI (Codex) API key from the user/environment."""
+    api_key = get_config("OPENAI_API_KEY", "Enter your OpenAI API key: ")
+    return api_key
+
+def get_codex_feedback(diff, api_key):
+    """Gets structured feedback from OpenAI (Codex) for the given diff."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    prompt = f"""Please review the following code diff and provide your feedback (only critical). ignore submodule changes and don't comment on them. If the changes are good and can be approved, please respond with only the word 'approve'. 
+    Otherwise, provide your comments for changes in a JSON array format, where each object in the array has 'file_path', 'line_content', and 'comment' keys. 
+    The line_content should be the exact line from the diff that the comment is about and it should be one line without new line characters.
+    Example:
+    ```json
+    [
+        {{
+            "file_path": "path/to/file.py",
+            "line_content": "...",
+            "comment": "This is a comment."
+        }}
+    ]
+    ```
+    
+    Here is the diff:
+    {diff}
+    """
+
+    body = {
+        "model": OPENAI_DEFAULT_MODEL,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2,
+    }
+
+    retries = 5
+    delay = 15  # seconds
+
+    for i in range(retries):
+        try:
+            response = requests.post(OPENAI_API_ENDPOINT, headers=headers, json=body)
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"].strip()
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 429 and i < retries - 1:
+                print(f"OpenAI rate limit exceeded. Retrying in {delay} seconds...")
+                time.sleep(delay)
+                delay *= 2
+            elif e.response is not None and e.response.status_code == 503 and i < retries - 1:
+                print(f"OpenAI API returned 503. Retrying... ({retries - i - 1} retries left)")
+                time.sleep(5)
+            elif i == retries - 1:
+                print("OpenAI API is unavailable after multiple retries.")
+                raise
+            else:
+                print(f"Error calling OpenAI API: {e}")
+                raise
+
+def parse_ai_feedback(feedback):
+    """Parses the feedback from the AI agent API."""
     if feedback.lower() == "approve":
         return "approve", None
     
@@ -218,7 +281,7 @@ def parse_diff(diff_text):
             files[current_file][-1]["lines"].append(line)
     return files
 
-def review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds, skip_if_user_interacted):
+def review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, ai_agent, ai_creds, skip_if_user_interacted):
     """Reviews a single pull request."""
     print(f"\nChecking PR: {pr.title}")
     print(f"URL: https://bitbucket.org/{workspace}/{repo_slug}/pull-requests/{pr.id}/")
@@ -234,8 +297,11 @@ def review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_cred
     parsed_diff = parse_diff(diff)
 
     try:
-        feedback = get_gemini_feedback(diff, gemini_creds)
-        action, comments = parse_gemini_feedback(feedback)
+        if str(ai_agent).lower() == "codex":
+            feedback = get_codex_feedback(diff, ai_creds)
+        else:
+            feedback = get_gemini_feedback(diff, ai_creds)
+        action, comments = parse_ai_feedback(feedback)
 
         if action == "approve":
             pr.approve()
@@ -321,7 +387,16 @@ def main():
         
         mode = get_mode()
 
-        gemini_creds = get_gemini_credentials()
+        ai_agent = get_config("AI_AGENT", "Select AI agent (Gemini/Codex): ") or "Gemini"
+        ai_agent_norm = ai_agent.strip().lower()
+        if ai_agent_norm not in ("gemini", "codex"):
+            print("Unknown AI agent selected; defaulting to Gemini.")
+            ai_agent_norm = "gemini"
+
+        if ai_agent_norm == "codex":
+            ai_creds = get_codex_credentials()
+        else:
+            ai_creds = get_gemini_credentials()
         if mode == 1:
             repo_slugs = get_config("MODE_1_REPO_SLUG_LIST", "Enter your Bitbucket repository slug(s) (comma-separated): ", is_list=True)
             for repo_slug in repo_slugs:
@@ -339,7 +414,7 @@ def main():
                     print("\n--- Pull Request Review Summary ---")
 
                     for pr in pull_requests:
-                        review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds, True)
+                        review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, ai_agent_norm, ai_creds, True)
                 except Exception as e:
                     print(f"Error processing repository {repo_slug}: {e}")
         elif mode == 3:
@@ -360,7 +435,7 @@ def main():
                     print("\n--- Pull Request Review Summary ---")
 
                     for pr in pull_requests:
-                        review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds, True)
+                        review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, ai_agent_norm, ai_creds, True)
                 except Exception as e:
                     print(f"Error processing repository {repo_slug}: {e}")
         
@@ -370,7 +445,7 @@ def main():
             try:
                 repo = bitbucket.repositories.get(workspace, repo_slug)
                 pr = repo.pullrequests.get(pr_id)
-                review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, gemini_creds, False)
+                review_pr(pr, user_uuid, email, api_token, workspace, repo_slug, ai_agent_norm, ai_creds, False)
             except Exception as e:
                 print(f"Error processing PR #{pr_id} in repository {repo_slug}: {e}")
 
