@@ -16,11 +16,12 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 # 3. Download the JSON file and save it as 'client_secret.json' in the same directory as this script.
 CLIENT_SECRET_FILE = "client_secret.json"
 SCOPES = ["https://www.googleapis.com/auth/generative-language.retriever"]
-GEMINI_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
+GEMINI_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+GEMINI_DEFAULT_MODEL = "gemini-2.5-pro"
 BITBUCKET_API_BASE_URL = "https://api.bitbucket.org/2.0"
 # Codex (OpenAI) configuration
 OPENAI_API_ENDPOINT = "https://api.openai.com/v1/chat/completions"
-OPENAI_DEFAULT_MODEL = "gpt-5-nano" #"gpt-4o-mini"
+OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 # --- END OF CONFIGURATION --- #
 
 def get_config(config_name, prompt, is_list=False):
@@ -70,6 +71,8 @@ def get_gemini_credentials():
     creds = flow.run_local_server(port=0)
     return creds
 
+import random
+
 def get_gemini_feedback(diff, creds):
     """Gets structured feedback from the Gemini API for the given diff."""
     headers = {
@@ -105,22 +108,24 @@ def get_gemini_feedback(diff, creds):
         ]
     }
 
-    retries = 5
+    retries = 10
     delay = 15  # seconds
+    backoff_factor = 2
 
     for i in range(retries):
         try:
-            response = requests.post(GEMINI_API_ENDPOINT, headers=headers, json=data)
+            response = requests.post(GEMINI_API_ENDPOINT.format(model=GEMINI_DEFAULT_MODEL), headers=headers, json=data)
             response.raise_for_status()
             return response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 429 and i < retries - 1:
-                print(f"Rate limit exceeded. Retrying in {delay} seconds...")
-                time.sleep(delay)
-                delay *= 2
+                wait = delay * (backoff_factor ** i) + random.uniform(0, 1)
+                print(f"Rate limit exceeded. Retrying in {wait:.2f} seconds...")
+                time.sleep(wait)
             elif e.response.status_code == 503 and i < retries - 1:
-                print(f"Gemini API returned 503. Retrying... ({retries - i - 1} retries left)")
-                time.sleep(5)
+                wait = delay * (backoff_factor ** i) + random.uniform(0, 1)
+                print(f"Gemini API returned 503. Retrying in {wait:.2f} seconds... ({retries - i - 1} retries left)")
+                time.sleep(wait)
             elif i == retries - 1:
                 print("Gemini API is unavailable after multiple retries.")
                 print_prompt_when_ai_agent_fail = get_config("PRINT_PROMPT_WHEN_AI_AGENT_FAIL", "Would you like to get the complete Gemini/Codex prompt to get the feedback on your own? (yes/no): ")
@@ -132,6 +137,7 @@ def get_gemini_feedback(diff, creds):
             else:
                 print(f"Error calling Gemini API: {e}")
                 raise
+
 
 def get_codex_credentials():
     """Gets OpenAI (Codex) API key from the user/environment."""
@@ -170,8 +176,9 @@ def get_codex_feedback(diff, api_key):
         "temperature": 0.2,
     }
 
-    retries = 5
+    retries = 10
     delay = 15  # seconds
+    backoff_factor = 2
 
     for i in range(retries):
         try:
@@ -180,12 +187,13 @@ def get_codex_feedback(diff, api_key):
             return response.json()["choices"][0]["message"]["content"].strip()
         except requests.exceptions.HTTPError as e:
             if e.response is not None and e.response.status_code == 429 and i < retries - 1:
-                print(f"OpenAI rate limit exceeded. Retrying in {delay} seconds...")
-                time.sleep(delay)
-                delay *= 2
+                wait = delay * (backoff_factor ** i) + random.uniform(0, 1)
+                print(f"OpenAI rate limit exceeded. Retrying in {wait:.2f} seconds...")
+                time.sleep(wait)
             elif e.response is not None and e.response.status_code == 503 and i < retries - 1:
-                print(f"OpenAI API returned 503. Retrying... ({retries - i - 1} retries left)")
-                time.sleep(5)
+                wait = delay * (backoff_factor ** i) + random.uniform(0, 1)
+                print(f"OpenAI API returned 503. Retrying in {wait:.2f} seconds... ({retries - i - 1} retries left)")
+                time.sleep(wait)
             elif i == retries - 1:
                 print("OpenAI API is unavailable after multiple retries.")
                 raise
@@ -386,6 +394,7 @@ def main():
         bitbucket = Cloud(username=email, password=api_token)
         
         mode = get_mode()
+        print(f"Selected mode: {mode}")
 
         ai_agent = get_config("AI_AGENT", "Select AI agent (Gemini/Codex): ") or "Gemini"
         ai_agent_norm = ai_agent.strip().lower()
