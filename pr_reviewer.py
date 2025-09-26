@@ -119,12 +119,28 @@ def get_gemini_feedback(diff, creds):
             return response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 429 and i < retries - 1:
-                wait = delay * (backoff_factor ** i) + random.uniform(0, 1)
-                print(f"Rate limit exceeded. Retrying in {wait:.2f} seconds...")
-                time.sleep(wait)
+                try:
+                    error_json = e.response.json()
+                    error_details = error_json.get("error", {}).get("details", [{}])
+                    for detail in error_details:
+                        if detail.get("@type") == "type.googleapis.com/google.rpc.RetryInfo":
+                            retry_delay_str = detail.get("retryDelay", "").replace("s", "")
+                    wait = float(retry_delay_str) + random.uniform(0, 1)
+                    try:
+                        print(f"Error details: {error_json.get("error", {}).get("message", "")}")
+                    except:
+                        pass
+                    print(f"Rate limit exceeded. Retrying in {wait:.2f} seconds...")
+                    time.sleep(wait)
+                except (ValueError, IndexError):
+                    wait = delay * (backoff_factor ** i) + random.uniform(0, 1)
+                    print(f"Error details: {e.response.text}")
+                    print(f"Rate limit exceeded. Retrying in {wait:.2f} seconds...")
+                    time.sleep(wait)
             elif e.response.status_code == 503 and i < retries - 1:
                 wait = delay * (backoff_factor ** i) + random.uniform(0, 1)
                 print(f"Gemini API returned 503. Retrying in {wait:.2f} seconds... ({retries - i - 1} retries left)")
+                print(f"Error details: {e.response.text}")
                 time.sleep(wait)
             elif i == retries - 1:
                 print("Gemini API is unavailable after multiple retries.")
@@ -187,12 +203,24 @@ def get_codex_feedback(diff, api_key):
             return response.json()["choices"][0]["message"]["content"].strip()
         except requests.exceptions.HTTPError as e:
             if e.response is not None and e.response.status_code == 429 and i < retries - 1:
-                wait = delay * (backoff_factor ** i) + random.uniform(0, 1)
-                print(f"OpenAI rate limit exceeded. Retrying in {wait:.2f} seconds...")
-                time.sleep(wait)
+                retry_after = e.response.headers.get("Retry-After")
+                if retry_after:
+                    try:
+                        wait = float(retry_after) + random.uniform(0, 1)
+                        print(f"OpenAI rate limit exceeded. Retrying in {wait:.2f} seconds...")
+                        time.sleep(wait)
+                    except ValueError:
+                        wait = delay * (backoff_factor ** i) + random.uniform(0, 1)
+                        print(f"OpenAI rate limit exceeded. Retrying in {wait:.2f} seconds...")
+                        time.sleep(wait)
+                else:
+                    wait = delay * (backoff_factor ** i) + random.uniform(0, 1)
+                    print(f"OpenAI rate limit exceeded. Retrying in {wait:.2f} seconds...")
+                    time.sleep(wait)
             elif e.response is not None and e.response.status_code == 503 and i < retries - 1:
                 wait = delay * (backoff_factor ** i) + random.uniform(0, 1)
                 print(f"OpenAI API returned 503. Retrying in {wait:.2f} seconds... ({retries - i - 1} retries left)")
+                print(f"Error details: {e.response.text}")
                 time.sleep(wait)
             elif i == retries - 1:
                 print("OpenAI API is unavailable after multiple retries.")
